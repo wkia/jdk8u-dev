@@ -25,6 +25,7 @@ import javax.net.ssl.*;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.PrivateKey;
@@ -34,8 +35,10 @@ import java.security.cert.PKIXBuilderParameters;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
+import sun.net.spi.nameservice.NameService;
 
 /**
  * A template to use "www.example.com" as the server name.  The caller should
@@ -283,15 +286,34 @@ public enum SSLExampleCert {
     };
 
     // Set "www.example.com" to loopback address.
+    public static class TestNameService implements NameService {
+        @Override
+        public InetAddress[] lookupAllHostAddr(String hostName) throws UnknownHostException {
+                if ("www.example.com".equals(hostName) || "www.example.com.".equals(hostName)) {
+                        final byte[] arrayOfByte = sun.net.util.IPAddressUtil.textToNumericFormatV4("127.0.0.1");
+                        final InetAddress address = InetAddress.getByAddress(hostName, arrayOfByte);
+                        return new InetAddress[] { address };
+                } else {
+                        throw new UnknownHostException();
+                }
+        }
+
+        @Override
+        public String getHostByAddr(byte[] param) throws UnknownHostException {
+                throw new UnknownHostException();
+        }
+    }
+
     static {
-        String hostsFileName = System.getProperty("jdk.net.hosts.file");
-        String loopbackHostname =
-                InetAddress.getLoopbackAddress().getHostAddress() +
-                " " + "www.example.com    www.example.com.\n";
-        try (FileWriter writer= new FileWriter(hostsFileName, false)) {
-             writer.write(loopbackHostname);
-        } catch (IOException ioe) {
-             // ignore
+        // Set up the test name service
+        try {
+                Field nameServiceField = InetAddress.class.getDeclaredField("nameServices");
+                nameServiceField.setAccessible(true);
+                ArrayList<NameService> nameServices = (ArrayList<NameService>) nameServiceField.get(null);
+                nameServices.clear();
+                nameServices.add(new TestNameService());
+        } catch (Exception e) {
+                e.printStackTrace();
         }
     }
 
